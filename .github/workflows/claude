@@ -13,4 +13,4 @@ jobs:
     steps:
       - uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ vs_code_key_hater}}
+          anthropic_api_key: ${{VS_CODE_API}}
