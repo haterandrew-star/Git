@@ -1,0 +1,83 @@
+{
+  "_comment": "Chess Tournament Entry Prediction — Tournament Configuration",
+  "_instructions": "Add one entry per tournament. 'prior_params' can be null if you want the system to fit from scratch.",
+
+  "settings": {
+    "scrape_interval_hours": 6,
+    "alert_delta_threshold_pct": 10,
+    "_alert_note": "Set alert credentials in .env (SENDGRID_API_KEY, TWILIO_*). Email/SMS fire automatically when delta exceeds threshold.",
+    "db_url": "postgresql://localhost:5432/chess_predictor",
+    "api_host": "0.0.0.0",
+    "api_port": 8000
+  },
+
+  "tournaments": [
+    {
+      "id": "WO2026",
+      "name": "World Open 2026",
+      "city": "Philadelphia, PA",
+      "tournament_family": "world_open",
+      "tournament_date": "2026-07-02",
+      "first_reg_date": "2026-02-05",
+      "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=WO2026",
+      "_sections_note": "If this tournament has multiple sections listed separately on chessaction.com, add a 'sections' array below. Each section needs a label and registration_url. The pipeline will scrape all sections and sum entry counts.",
+      "expected_total": 277,
+      "active": true,
+      "has_early_bird": true,
+      "fee_deadlines": [
+        {"date": "2026-06-01", "label": "Standard Deadline", "price_delta": 0},
+        {"date": "2026-06-22", "label": "Late Fee Begins", "price_delta": 40}
+      ],
+      "prior_params": {
+        "L1": 20.6,
+        "k1": 0.0468,
+        "m1": 79.2,
+        "L2": 256.7,
+        "k2": 0.2512,
+        "m2": 246.7,
+        "r2": 0.964,
+        "rmse": 1.09,
+        "source": "CCA brief pre-fitted parameters (20 data points as of 2026-03-09)"
+      },
+      "t_calibration": {
+        "t0": 154,
+        "date0": "2026-03-09",
+        "scale_days_per_t": 1.29,
+        "_note": "t is not in simple calendar days — calibrated from brief milestone predictions"
+      }
+    },
+    {
+      "id": "CHI2022",
+      "name": "Chicago Open 2022",
+      "city": "Chicago, IL",
+      "tournament_family": "chicago_open",
+      "tournament_date": "2022-05-27",
+      "first_reg_date": "2022-01-07",
+      "registration_url": null,
+      "expected_total": 943,
+      "active": false,
+      "has_early_bird": true,
+      "fee_deadlines": [
+        {"date": "2022-03-15", "label": "Early Bird Deadline", "price_delta": -30},
+        {"date": "2022-05-15", "label": "Late Fee Begins", "price_delta": 30}
+      ],
+      "prior_params": null,
+      "_note": "Historical training dataset. 943 entries, Jan 7 – May 29 2022. Double sigmoid (early bird)."
+    },
+    {
+      "id": "NAO2024",
+      "name": "North American Open 2024",
+      "city": "Las Vegas, NV",
+      "tournament_family": "north_american_open",
+      "tournament_date": "2024-12-26",
+      "first_reg_date": "2024-07-12",
+      "registration_url": null,
+      "expected_total": 1102,
+      "active": false,
+      "has_early_bird": false,
+      "fee_deadlines": [],
+      "prior_params": null,
+      "_note": "Historical training dataset. 1102 entries, Jul 12 – Dec 27 2024. Single sigmoid (no early bird)."
+    }
+  ]
+}

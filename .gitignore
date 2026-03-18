@@ -1,0 +1,28 @@
+# Secrets
+.env
+credentials.json
+token.json
+client_secret_*.json
+*_secret_*.json
+
+# Claude IDE settings
+.claude/
+
+# Temporary processing files
+.tmp/
+
+# Version backups (local only)
+_backups/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
