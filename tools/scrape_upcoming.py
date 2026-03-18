@@ -492,6 +492,49 @@ def run(args):
         enriched.append(result)
         print(f"  OK {name} | date={result['tournament_date']} | entries={entry_count}")
 
+    # Merge all "World Open" sub-events into a single aggregated entry
+    wo_sections = [t for t in enriched if "world open" in t["name"].lower()]
+    non_wo = [t for t in enriched if "world open" not in t["name"].lower()]
+    if wo_sections:
+        # Find the configured WO2026 entry for prior_params / expected_total
+        wo_config = next((c for c in config.get("tournaments", [])
+                          if c.get("tournament_family") == "world_open" and c.get("active")), None)
+        total_entries = sum((t.get("entry_count") or 0) for t in wo_sections)
+        # Use earliest start date as tournament_date (earliest section start)
+        dates = [t["tournament_date"] for t in wo_sections if t.get("tournament_date")]
+        main_date = min(dates) if dates else None
+        # Primary registration URL = top 6 sections (largest)
+        primary_url = next(
+            (t["registration_url"] for t in wo_sections if "top 6" in t["name"].lower()), None
+        ) or (wo_sections[0]["registration_url"] if wo_sections else None)
+        merged_wo = {
+            "id": "WO2026",
+            "name": "2026 World Open",
+            "tournament_date": main_date,
+            "end_date": None,
+            "location": "DC",
+            "registration_url": primary_url,
+            "entry_count": total_entries,
+            "expected_total": wo_config.get("expected_total", 1100) if wo_config else 1100,
+            "prior_params": wo_config.get("prior_params") if wo_config else None,
+            "sections": [
+                {"label": t["name"].replace("2026 World Open", "").strip(" ,"),
+                 "entry_count": t.get("entry_count") or 0,
+                 "registration_url": t.get("registration_url")}
+                for t in sorted(wo_sections, key=lambda x: -(x.get("entry_count") or 0))
+            ],
+            "raw_dates": None,
+        }
+        # Compute prediction for merged entry
+        if merged_wo["prior_params"] and wo_config:
+            pred_input = dict(merged_wo)
+            pred_input["first_reg_date"] = wo_config.get("first_reg_date", "2026-02-05")
+            merged_wo["prediction"] = compute_prediction(pred_input)
+        else:
+            merged_wo["prediction"] = None
+        enriched = non_wo + [merged_wo]
+        print(f"\n  [merge] Combined {len(wo_sections)} World Open sections → {total_entries} total entries")
+
     # Sort by tournament_date
     def sort_key(t):
         return t.get("tournament_date") or "9999-99-99"

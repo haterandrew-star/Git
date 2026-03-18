@@ -681,6 +681,113 @@ class ThompsonSamplingModel:
         return self.mu_post
 
 
+# ── Model 6: Historical Ratio ──────────────────────────────────────────────────
+
+class HistoricalRatioModel:
+    """
+    Ratio-based prediction using same-family historical registration curves.
+
+    At the current relative cycle point (t_today / t_final), looks up how many
+    entries were registered in each historical year at the same relative point,
+    computes fraction = count_at_point / final_count for each year, then:
+
+        predicted_final = current_count / median_fraction
+
+    CI is derived from the min/max fraction range across historical years.
+
+    This model dominates early-cycle when sigmoid models fit a flat plateau and
+    underpredict. Its weight fades once enough data exists to fit a real curve.
+
+    Historical data format (loaded from .tmp/{family}_historical.json):
+        { "2022": {"cumulative": [[t, count], ...], "total_entries": N}, ... }
+    """
+
+    def __init__(self, historical_data: dict | None = None):
+        self.historical = historical_data or {}
+        self.fitted = False
+        self.fractions: list[float] = []
+        self.implied_finals: list[float] = []
+        self.year_details: list[dict] = []
+        self.pct_elapsed: float = 0.0
+
+    def fit(self, t_today: float, t_final: float, count_now: float) -> bool:
+        if not self.historical or count_now <= 0 or t_final <= 0:
+            return False
+
+        self.pct_elapsed = t_today / t_final
+        self.fractions = []
+        self.implied_finals = []
+        self.year_details = []
+
+        for year, data in self.historical.items():
+            pts = data.get("cumulative", [])
+            final = data.get("total_entries", 0)
+            if not pts or final <= 0:
+                continue
+
+            # t_equiv: same relative point in this year's cycle
+            yr_t_max = max(p[0] for p in pts)
+            t_equiv = self.pct_elapsed * yr_t_max
+
+            # Interpolate count at t_equiv
+            count_at = 0.0
+            for i, (t, c) in enumerate(pts):
+                if t <= t_equiv:
+                    count_at = float(c)
+                else:
+                    # Linear interpolation between previous and current point
+                    if i > 0:
+                        t_prev, c_prev = pts[i - 1]
+                        if t > t_prev:
+                            frac = (t_equiv - t_prev) / (t - t_prev)
+                            count_at = float(c_prev) + frac * (float(c) - float(c_prev))
+                    break
+
+            if count_at <= 0:
+                continue
+
+            fraction = count_at / final
+            implied = count_now / fraction
+            self.fractions.append(fraction)
+            self.implied_finals.append(implied)
+            self.year_details.append({
+                "year": year, "fraction": round(fraction, 4),
+                "count_at_equiv": round(count_at, 1),
+                "final": final, "implied": round(implied, 0),
+            })
+
+        self.fitted = len(self.fractions) >= 1
+        return self.fitted
+
+    def predict(self) -> float:
+        if not self.fitted:
+            return 0.0
+        s = sorted(self.implied_finals)
+        n = len(s)
+        return s[n // 2] if n % 2 == 1 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+    def predict_with_ci(self) -> dict:
+        if not self.fitted:
+            return {"predicted": 0.0, "ci_low": 0.0, "ci_high": 0.0}
+        s = sorted(self.implied_finals)
+        n = len(s)
+        pred = s[n // 2] if n % 2 == 1 else (s[n // 2 - 1] + s[n // 2]) / 2
+        # IQR if ≥4 years, else min/max
+        ci_low  = s[n // 4]     if n >= 4 else s[0]
+        ci_high = s[3 * n // 4] if n >= 4 else s[-1]
+        # Ensure ci contains pred
+        ci_low  = min(ci_low,  pred)
+        ci_high = max(ci_high, pred)
+        return {
+            "predicted": round(pred, 1),
+            "ci_low": round(ci_low, 1),
+            "ci_high": round(ci_high, 1),
+            "pct_elapsed": round(self.pct_elapsed * 100, 1),
+            "n_years": n,
+            "year_details": self.year_details,
+        }
+
+
 # ── Ensemble Combiner ──────────────────────────────────────────────────────────
 
 class EnsemblePredictor:
@@ -716,35 +823,57 @@ class EnsemblePredictor:
         n = self.n_data
 
         # Base weights by data density
-        if n >= 20:
+        if n >= 50:
+            # Late cycle: sigmoid models are well-calibrated, ratio fades out
             base = {
                 "single_sigmoid": 2.0,
                 "double_sigmoid": 2.0,
                 "monte_carlo": 2.5,
                 "bayesian_mcmc": 2.0,
-                "thompson": 1.5,
+                "thompson": 1.0,
+                "historical_ratio": 0.5,
             }
-        elif n >= 10:
+        elif n >= 20:
+            # Mid cycle: balance data-fitted and historical
             base = {
                 "single_sigmoid": 1.5,
                 "double_sigmoid": 1.5,
                 "monte_carlo": 2.0,
-                "bayesian_mcmc": 2.5,
-                "thompson": 2.0,
+                "bayesian_mcmc": 2.0,
+                "thompson": 1.5,
+                "historical_ratio": 2.5,
             }
-        else:
-            # Sparse data: lean on priors
+        elif n >= 10:
             base = {
                 "single_sigmoid": 0.5,
                 "double_sigmoid": 0.5,
                 "monte_carlo": 1.0,
-                "bayesian_mcmc": 3.0,
-                "thompson": 3.0,
+                "bayesian_mcmc": 1.5,
+                "thompson": 1.5,
+                "historical_ratio": 5.0,
+            }
+        else:
+            # Sparse data: historical ratio dominates
+            base = {
+                "single_sigmoid": 0.5,
+                "double_sigmoid": 0.5,
+                "monte_carlo": 0.5,
+                "bayesian_mcmc": 1.5,
+                "thompson": 1.5,
+                "historical_ratio": 4.0,
             }
 
-        # Zero out models that didn't fit
+        # Zero out models that didn't fit or are implausibly low
+        # When a data-fitted model predicts far below the historical_ratio,
+        # it's fitting a flat early-cycle plateau rather than the true curve.
+        hist_pred = self.model_results.get("historical_ratio", {}).get("predicted", 0)
         for name, result in self.model_results.items():
             if not result["fitted"] or result["predicted"] <= 0:
+                base[name] = 0.0
+            elif (name not in ("historical_ratio", "thompson", "bayesian_mcmc")
+                  and hist_pred > 0
+                  and result["predicted"] < hist_pred * 0.15):
+                # Sigmoid/MC models predicting <15% of historical ratio → implausible
                 base[name] = 0.0
 
         # Normalize
@@ -798,6 +927,33 @@ def load_tournament_config(tid: str) -> dict | None:
         if t["id"] == tid:
             return t
     return None
+
+
+def load_historical_data(tournament_cfg: dict | None) -> dict:
+    """
+    Load same-family historical registration curves from .tmp/{family}_historical.json.
+    Returns dict keyed by year, or empty dict if not available.
+    """
+    if not tournament_cfg:
+        return {}
+    family = tournament_cfg.get("tournament_family", "")
+    if not family:
+        return {}
+    # Map family name to file: "world_open" → "wo_historical.json", etc.
+    family_file_map = {
+        "world_open": "wo_historical.json",
+        "chicago_open": "chi_historical.json",
+        "north_american_open": "nao_historical.json",
+    }
+    fname = family_file_map.get(family, f"{family}_historical.json")
+    path = TMP / fname
+    if not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def load_priors_from_history() -> dict:
@@ -1036,6 +1192,35 @@ def run_ensemble(
     }
     ensemble.add_result("thompson", ts_dist["median"], ts_dist["p10"], ts_dist["p90"], fitted=True)
 
+    # ── Model 6: Historical Ratio ─────────────────────────────────────────────
+    if verbose: print("\n[6/6] Historical Ratio...")
+    historical_data = load_historical_data(tournament_cfg)
+    m6 = HistoricalRatioModel(historical_data=historical_data)
+    ok6 = m6.fit(t_today, t_final, count_now)
+    if ok6:
+        pred6 = m6.predict_with_ci()
+        if verbose:
+            print(f"     {pred6['n_years']} historical years at {pred6['pct_elapsed']:.1f}% of cycle")
+            for yd in pred6.get("year_details", []):
+                print(f"       {yd['year']}: {yd['count_at_equiv']:.0f}/{yd['final']} "
+                      f"= {yd['fraction']:.3f} → implied {yd['implied']:.0f}")
+            print(f"     Predicted final: {pred6['predicted']} "
+                  f"[{pred6['ci_low']} – {pred6['ci_high']}]")
+        results["historical_ratio"] = {
+            "predicted_final": pred6["predicted"],
+            "ci_low": pred6["ci_low"],
+            "ci_high": pred6["ci_high"],
+            "pct_elapsed": pred6["pct_elapsed"],
+            "year_details": pred6.get("year_details", []),
+            "fitted": True,
+        }
+        ensemble.add_result("historical_ratio", pred6["predicted"],
+                            pred6["ci_low"], pred6["ci_high"], fitted=True)
+    else:
+        if verbose: print("     SKIPPED (no historical family data in .tmp/)")
+        results["historical_ratio"] = {"fitted": False, "reason": "no historical data"}
+        ensemble.add_result("historical_ratio", 0, 0, 0, fitted=False)
+
     # ── Ensemble combination ──────────────────────────────────────────────────
     if verbose: print("\n── Ensemble ─────────────────────────────────────")
     ensemble_pred = ensemble.predict()
@@ -1044,7 +1229,7 @@ def run_ensemble(
         print(f"  Predicted final: {ensemble_pred['predicted_final']}")
         print(f"  CI: [{ensemble_pred['ci_low']} – {ensemble_pred['ci_high']}]")
         print(f"  Weights: {ensemble_pred['weights']}")
-        print(f"  Models contributing: {ensemble_pred['n_models']}/5")
+        print(f"  Models contributing: {ensemble_pred['n_models']}/6")
 
     # ── Assemble output ───────────────────────────────────────────────────────
     output = {

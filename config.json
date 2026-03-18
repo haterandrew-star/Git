@@ -1,7 +1,6 @@
 {
   "_comment": "Chess Tournament Entry Prediction — Tournament Configuration",
   "_instructions": "Add one entry per tournament. 'prior_params' can be null if you want the system to fit from scratch.",
-
   "settings": {
     "scrape_interval_hours": 6,
     "alert_delta_threshold_pct": 10,
@@ -10,34 +9,88 @@
     "api_host": "0.0.0.0",
     "api_port": 8000
   },
-
   "tournaments": [
     {
       "id": "WO2026",
       "name": "World Open 2026",
-      "city": "Philadelphia, PA",
+      "city": "Washington, DC",
       "tournament_family": "world_open",
       "tournament_date": "2026-07-02",
-      "first_reg_date": "2026-02-05",
-      "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=WO2026",
-      "_sections_note": "If this tournament has multiple sections listed separately on chessaction.com, add a 'sections' array below. Each section needs a label and registration_url. The pipeline will scrape all sections and sum entry counts.",
-      "expected_total": 277,
+      "first_reg_date": "2025-11-26",
+      "registration_url": null,
+      "sections": [
+        {
+          "label": "Top 6 sections",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKGipA=="
+        },
+        {
+          "label": "Lower sections",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKGipQ=="
+        },
+        {
+          "label": "G/50 Championship",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKOepQ=="
+        },
+        {
+          "label": "Under 13",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKKnpA=="
+        },
+        {
+          "label": "Womens Championship",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKOfnQ=="
+        },
+        {
+          "label": "Senior Amateur",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKOfnA=="
+        },
+        {
+          "label": "Amateur",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKOeog=="
+        },
+        {
+          "label": "Action",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKOeoQ=="
+        },
+        {
+          "label": "G/7 Championship",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKKnog=="
+        },
+        {
+          "label": "G/10 Championship",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKKnow=="
+        },
+        {
+          "label": "Blitz Championship",
+          "registration_url": "https://onlineregistration.cc/tournaments/advance_entry_list.php?tid=nKOepA=="
+        }
+      ],
+      "expected_total": 1100,
       "active": true,
       "has_early_bird": true,
       "fee_deadlines": [
-        {"date": "2026-06-01", "label": "Standard Deadline", "price_delta": 0},
-        {"date": "2026-06-22", "label": "Late Fee Begins", "price_delta": 40}
+        {
+          "date": "2026-06-01",
+          "label": "Standard Deadline",
+          "price_delta": 0
+        },
+        {
+          "date": "2026-06-22",
+          "label": "Late Fee Begins",
+          "price_delta": 40
+        }
       ],
       "prior_params": {
-        "L1": 20.6,
-        "k1": 0.0468,
-        "m1": 79.2,
-        "L2": 256.7,
-        "k2": 0.2512,
-        "m2": 246.7,
-        "r2": 0.964,
-        "rmse": 1.09,
-        "source": "CCA brief pre-fitted parameters (20 data points as of 2026-03-09)"
+        "L1": 469.3,
+        "k1": 0.07843,
+        "m1": 157.0,
+        "L2": 630.7,
+        "k2": 0.24453,
+        "m2": 210.0,
+        "r2": 0.996,
+        "rmse": 26.3,
+        "source": "Averaged from WO 2023-2025 double sigmoid fits (2022 excluded: bad local min)",
+        "L_mean": 1100,
+        "L_sd": 12.3
       },
       "t_calibration": {
         "t0": 154,
@@ -58,8 +111,16 @@
       "active": false,
       "has_early_bird": true,
       "fee_deadlines": [
-        {"date": "2022-03-15", "label": "Early Bird Deadline", "price_delta": -30},
-        {"date": "2022-05-15", "label": "Late Fee Begins", "price_delta": 30}
+        {
+          "date": "2022-03-15",
+          "label": "Early Bird Deadline",
+          "price_delta": -30
+        },
+        {
+          "date": "2022-05-15",
+          "label": "Late Fee Begins",
+          "price_delta": 30
+        }
       ],
       "prior_params": null,
       "_note": "Historical training dataset. 943 entries, Jan 7 – May 29 2022. Double sigmoid (early bird)."
